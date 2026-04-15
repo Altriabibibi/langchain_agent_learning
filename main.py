@@ -35,11 +35,13 @@ llm=ChatOpenAI(
 )
 
 print("----创建llm完成----")
-
+print("LLM："+DEEPSEEK_MODEL)
 
 tools=[time_tool,save_tool,read_doc_tool,run_code_tool,read_python_file,save_python_file]
 
 print("----工具创建完成----")
+for x in tools:
+    print("工具："+x.name)
 
 system_prompt="""
 你是一个智能编程助手，具备以下核心能力：
@@ -148,22 +150,26 @@ print("----agent创建完成----")
 
 def chat_with_agent(user_input: str):
     global messages_history
-
+    print("思考中......")
     all_messages=messages_history.copy()
     all_messages.append(user_input)
+    print(all_messages)
 
     response=agent.invoke({"messages":all_messages})
-
     try:
         if 'messages' in response and len(response['messages'])>0 :
             ai_response=response['messages'][-1].content
 
+
+            messages_history.append(("human", user_input))
+            messages_history.append(("ai", ai_response))
+
             # 打印中间步骤（调试用）
-            print("\n--- Agent 执行过程 ---")
-            for msg in response['messages']:
-                if hasattr(msg, 'type'):
-                    print(f"[{msg.type}]: {str(msg.content)[:200]}...")
-            print("--- 执行过程结束 ---\n")
+            # print("\n--- Agent 执行过程 ---")
+            # for msg in response['messages']:
+            #     if hasattr(msg, 'type'):
+            #         print(f"[{msg.type}]: {str(msg.content)[:200]}...")
+            # print("--- 执行过程结束 ---\n")
 
         else:
             ai_response=str(response)
