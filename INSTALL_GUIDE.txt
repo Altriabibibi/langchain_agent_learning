@@ -1,0 +1,205 @@
+================================================================================
+Python AI Agent 项目 - 环境配置指南
+================================================================================
+
+一、快速开始
+================================================================================
+
+1. 创建虚拟环境（推荐）
+   ```bash
+   # Windows PowerShell
+   python -m venv venv
+   .\venv\Scripts\Activate
+   
+   # 或使用 Anaconda
+   conda create -n agentlearn python=3.10
+   conda activate agentlearn
+   ```
+
+2. 安装依赖
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. 配置环境变量
+   - 复制 .env.example 为 .env
+   - 在 .env 文件中填入你的 API Key
+   ```bash
+   copy .env.example .env
+   # 然后编辑 .env 文件
+   ```
+
+4. 运行程序
+   ```bash
+   python main.py
+   ```
+
+
+二、核心依赖说明
+================================================================================
+
+【必需依赖】
+
+1. LangChain 生态系统
+   - langchain: 主框架
+   - langchain-core: 核心功能
+   - langchain-community: 社区工具集成
+   - langchain-openai: OpenAI/DeepSeek 集成
+   - langgraph: Agent 工作流管理
+
+2. 环境变量管理
+   - python-dotenv: 加载 .env 文件中的配置
+
+3. 文档处理
+   - python-docx: 读取 .docx 文件
+   - unstructured: 通用文档解析框架
+
+4. 网络搜索
+   - duckduckgo-search: DuckDuckGo 搜索引擎
+   - ddgs: DuckDuckGo API 客户端
+   - wikipedia: Wikipedia API
+
+5. LLM 接口
+   - openai: OpenAI/兼容 API 客户端
+
+【可选依赖】
+
+6. 文本处理增强
+   - nltk: 自然语言处理（用于 unstructured）
+   - beautifulsoup4: HTML 解析
+   - lxml: XML/HTML 处理
+
+7. 数据处理
+   - numpy: 数值计算
+   - requests: HTTP 请求库
+
+8. 工具库
+   - pydantic: 数据验证和设置管理
+   - typing-extensions: 类型提示支持
+
+
+三、依赖分类详解
+================================================================================
+
+【Agent 核心功能】
+├── LangChain 框架 (langchain, langchain-core)
+├── Agent 工作流 (langgraph)
+├── LLM 集成 (langchain-openai, openai)
+└── 工具注册 (langchain-community)
+
+【文档处理能力】
+├── Word 文档 (python-docx)
+├── 通用解析 (unstructured)
+└── NLTK 支持 (nltk)
+
+【信息检索能力】
+├── 网页搜索 (duckduckgo-search, ddgs)
+└── 百科查询 (wikipedia)
+
+【配置管理】
+└── 环境变量 (python-dotenv)
+
+【辅助工具】
+├── 数据验证 (pydantic)
+├── HTTP 请求 (requests)
+└── 文本处理 (beautifulsoup4, lxml)
+
+
+四、版本兼容性
+================================================================================
+
+Python 版本要求: >= 3.9
+推荐 Python 版本: 3.10 - 3.12
+
+主要依赖版本:
+- LangChain: >= 1.2.0
+- LangGraph: >= 1.1.0
+- OpenAI SDK: >= 2.30.0
+- Python-Docx: >= 1.2.0
+- Unstructured: >= 0.18.0
+
+
+五、常见问题
+================================================================================
+
+Q1: 安装时出现依赖冲突怎么办？
+A1: 尝试更新 pip 后重新安装
+    ```bash
+    python -m pip install --upgrade pip
+    pip install -r requirements.txt
+    ```
+
+Q2: NLTK 数据包下载失败？
+A2: 手动下载 NLTK 数据
+    ```python
+    import nltk
+    nltk.download('all')
+    ```
+
+Q3: unstructured 安装失败？
+A3: 可能需要安装系统依赖
+    Windows: 通常不需要额外配置
+    Linux: sudo apt-get install libmagic-dev poppler-utils tesseract-ocr
+
+Q4: 如何检查依赖是否正确安装？
+A4: 运行以下命令
+    ```bash
+    python -c "import langchain; print('LangChain OK')"
+    python -c "import dotenv; print('DotEnv OK')"
+    python -c "from tools import *; print('Tools OK')"
+    ```
+
+Q5: 如何更新依赖到最新版本？
+A5: 
+    ```bash
+    pip install --upgrade -r requirements.txt
+    ```
+
+
+六、开发环境建议
+================================================================================
+
+1. 使用虚拟环境隔离项目依赖
+2. 定期更新依赖包以获取安全补丁
+3. 不要将 .env 文件提交到版本控制
+4. 使用 requirements.txt 确保环境一致性
+5. 考虑使用 pyproject.toml 进行更现代的依赖管理
+
+
+七、最小化安装（仅核心功能）
+================================================================================
+
+如果只需要基本的 Agent 功能，可以只安装：
+
+```bash
+pip install langchain langchain-core langchain-openai langgraph python-dotenv openai
+```
+
+然后根据需要的功能逐步添加其他依赖。
+
+
+八、完整功能安装
+================================================================================
+
+安装所有依赖以启用全部功能：
+
+```bash
+pip install -r requirements.txt
+```
+
+这将启用：
+✅ Agent 对话
+✅ Python 代码执行
+✅ Word 文档读取和分析
+✅ 网络搜索（DuckDuckGo）
+✅ Wikipedia 查询
+✅ 文件保存和管理
+
+
+================================================================================
+如有问题，请检查：
+1. Python 版本是否符合要求
+2. 网络连接是否正常
+3. pip 是否为最新版本
+4. 虚拟环境是否正确激活
+================================================================================
