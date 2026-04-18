@@ -1,5 +1,5 @@
 # ============================================================================
-# 文件名: tools.py
+# 文件名: tools_file.py
 # 功能: 定义研究助手 Agent 可用的工具集
 # 说明: Agent 通过这些工具来执行实际操作（搜索、查询、保存数据等）
 # ============================================================================
@@ -19,7 +19,23 @@ import sys
 import io
 from contextlib import redirect_stdout, redirect_stderr
 
-# ... existing code ...
+# 数据分析和可视化库
+import pandas as pd
+import matplotlib
+matplotlib.use('Agg')  # 非交互式后端，适合服务器环境
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# 向量数据库和嵌入模型
+from langchain_chroma import Chroma
+try:
+    from langchain_huggingface import HuggingFaceEmbeddings
+except ImportError:
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_core.documents import Document
+import chromadb
+
+
 
 # ============================================================================
 # 第2部分: 工具函数定义
@@ -368,6 +384,206 @@ def save_python_file(code: str, file_path: str) -> str:
     
     except Exception as e:
         return f"❌ 保存文件失败: {str(e)}"
+
+
+# ----------------------------------------------------------------------------
+# 工具10: analyze_csv_excel - CSV/Excel 数据分析工具
+# 功能: 读取 CSV/Excel 文件并生成统计分析报告和图表
+# 使用场景: Agent 需要分析数据文件时
+# ----------------------------------------------------------------------------
+@tool
+def analyze_csv_excel(file_path: str, output_dir: str = "analysis_output") -> str:
+    """
+    读取 CSV 或 Excel 文件，生成统计分析报告和可视化图表
+    
+    Args:
+        file_path: CSV 或 Excel 文件路径
+        output_dir: 输出目录（默认: analysis_output）
+    
+    Returns:
+        str: 分析报告摘要和生成的文件列表
+    """
+    print(f"正在分析文件: {file_path}")
+    
+    try:
+        # 检查文件是否存在
+        if not os.path.exists(file_path):
+            return f"错误：文件不存在 - {file_path}"
+        
+        # 创建输出目录
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        
+        # 读取文件
+        if file_path.endswith('.csv'):
+            df = pd.read_csv(file_path)
+        elif file_path.endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(file_path)
+        else:
+            return f"错误：不支持的文件格式，仅支持 .csv, .xlsx, .xls"
+        
+        # 生成文件名前缀
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        prefix = f"{base_name}_{timestamp}"
+        
+        # 1. 基本统计信息
+        report = []
+        report.append("=" * 60)
+        report.append(f"数据分析报告")
+        report.append(f"文件: {file_path}")
+        report.append(f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        report.append("=" * 60)
+        report.append("")
+        
+        # 数据集概览
+        report.append("【1. 数据集概览】")
+        report.append(f"- 行数: {len(df)}")
+        report.append(f"- 列数: {len(df.columns)}")
+        report.append(f"- 列名: {', '.join(df.columns.tolist())}")
+        report.append("")
+        
+        # 数据类型
+        report.append("【2. 数据类型】")
+        for col, dtype in df.dtypes.items():
+            report.append(f"- {col}: {dtype}")
+        report.append("")
+        
+        # 缺失值统计
+        report.append("【3. 缺失值统计】")
+        missing = df.isnull().sum()
+        missing_pct = (df.isnull().sum() / len(df) * 100).round(2)
+        for col in df.columns:
+            if missing[col] > 0:
+                report.append(f"- {col}: {missing[col]} ({missing_pct[col]}%)")
+        if missing.sum() == 0:
+            report.append("- 无缺失值")
+        report.append("")
+        
+        # 数值列统计
+        numeric_cols = df.select_dtypes(include=['number']).columns
+        if len(numeric_cols) > 0:
+            report.append("【4. 数值列统计】")
+            stats = df[numeric_cols].describe()
+            for col in numeric_cols:
+                report.append(f"\n{col}:")
+                report.append(f"  - 均值: {stats[col]['mean']:.2f}")
+                report.append(f"  - 标准差: {stats[col]['std']:.2f}")
+                report.append(f"  - 最小值: {stats[col]['min']:.2f}")
+                report.append(f"  - 最大值: {stats[col]['max']:.2f}")
+                report.append(f"  - 中位数: {stats[col]['50%']:.2f}")
+            report.append("")
+        
+        # 分类列统计
+        categorical_cols = df.select_dtypes(include=['object', 'category']).columns
+        if len(categorical_cols) > 0:
+            report.append("【5. 分类列统计】")
+            for col in categorical_cols[:5]:  # 只显示前5个分类列
+                unique_count = df[col].nunique()
+                top_values = df[col].value_counts().head(3)
+                report.append(f"\n{col}:")
+                report.append(f"  - 唯一值数量: {unique_count}")
+                report.append(f"  - 最常见值:")
+                for val, count in top_values.items():
+                    report.append(f"    • {val}: {count}次")
+            report.append("")
+        
+        # 2. 生成图表
+        generated_files = []
+        
+        # 设置中文字体
+        plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
+        plt.rcParams['axes.unicode_minus'] = False
+        
+        # 图表1: 数值列分布直方图
+        if len(numeric_cols) > 0:
+            fig, axes = plt.subplots(min(len(numeric_cols), 3), 1, figsize=(10, 4*min(len(numeric_cols), 3)))
+            if len(numeric_cols) == 1:
+                axes = [axes]
+            
+            for i, col in enumerate(numeric_cols[:3]):
+                axes[i].hist(df[col].dropna(), bins=30, color='steelblue', edgecolor='black', alpha=0.7)
+                axes[i].set_title(f'{col} 分布', fontsize=12, fontweight='bold')
+                axes[i].set_xlabel(col)
+                axes[i].set_ylabel('频数')
+                axes[i].grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            hist_file = os.path.join(output_dir, f"{prefix}_histogram.png")
+            plt.savefig(hist_file, dpi=150, bbox_inches='tight')
+            plt.close()
+            generated_files.append(hist_file)
+            report.append("【6. 生成的图表】")
+            report.append(f"- 直方图: {hist_file}")
+        
+        # 图表2: 相关性热力图
+        if len(numeric_cols) > 1:
+            plt.figure(figsize=(10, 8))
+            corr_matrix = df[numeric_cols].corr()
+            sns.heatmap(corr_matrix, annot=True, fmt='.2f', cmap='coolwarm', 
+                       square=True, linewidths=0.5)
+            plt.title('变量相关性热力图', fontsize=14, fontweight='bold')
+            plt.tight_layout()
+            corr_file = os.path.join(output_dir, f"{prefix}_correlation.png")
+            plt.savefig(corr_file, dpi=150, bbox_inches='tight')
+            plt.close()
+            generated_files.append(corr_file)
+            report.append(f"- 相关性热力图: {corr_file}")
+        
+        # 图表3: 分类列柱状图
+        if len(categorical_cols) > 0:
+            fig, axes = plt.subplots(min(len(categorical_cols), 2), 1, figsize=(10, 5*min(len(categorical_cols), 2)))
+            if len(categorical_cols) == 1:
+                axes = [axes]
+            
+            for i, col in enumerate(categorical_cols[:2]):
+                value_counts = df[col].value_counts().head(10)
+                axes[i].bar(range(len(value_counts)), value_counts.values, color='coral', edgecolor='black')
+                axes[i].set_xticks(range(len(value_counts)))
+                axes[i].set_xticklabels(value_counts.index, rotation=45, ha='right')
+                axes[i].set_title(f'{col} 分布', fontsize=12, fontweight='bold')
+                axes[i].set_ylabel('频数')
+                axes[i].grid(True, alpha=0.3, axis='y')
+            
+            plt.tight_layout()
+            bar_file = os.path.join(output_dir, f"{prefix}_bar.png")
+            plt.savefig(bar_file, dpi=150, bbox_inches='tight')
+            plt.close()
+            generated_files.append(bar_file)
+            report.append(f"- 柱状图: {bar_file}")
+        
+        # 3. 保存报告
+        report.append("")
+        report.append("=" * 60)
+        report.append("分析完成！")
+        report.append(f"生成的文件保存在: {output_dir}")
+        report.append("=" * 60)
+        
+        report_text = "\n".join(report)
+        
+        # 保存报告到文件
+        report_file = os.path.join(output_dir, f"{prefix}_report.txt")
+        with open(report_file, 'w', encoding='utf-8') as f:
+            f.write(report_text)
+        generated_files.append(report_file)
+        
+        # 返回摘要
+        summary = f"✅ 分析完成！\n\n"
+        summary += f"📊 数据集: {len(df)} 行 × {len(df.columns)} 列\n"
+        summary += f"📈 数值列: {len(numeric_cols)} 个\n"
+        summary += f"🏷️ 分类列: {len(categorical_cols)} 个\n"
+        summary += f"📁 生成文件: {len(generated_files)} 个\n\n"
+        summary += "生成的文件:\n"
+        for f in generated_files:
+            summary += f"  - {f}\n"
+        summary += f"\n完整报告已保存至: {report_file}"
+        
+        return summary
+    
+    except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        return f"❌ 分析失败: {str(e)}\n\n详细错误:\n{error_detail}"
 # ----------------------------------------------------------------------------
 # 工具7: run_python_code - Python 代码执行工具
 # 功能: 安全地执行 Python 代码并返回结果
@@ -543,8 +759,566 @@ run_code_tool = Tool(
     description="执行Python代码或运行.py文件。用法：1) 直接传入代码字符串，如'print(2+2)'；2) 传入.py文件路径，如'test_code_execution.py'。支持导入常用模块(math, random, json, datetime等)。可以执行计算、数据处理、算法演示、文件读取等操作。",
 )
 
+# ----------------------------------------------------------------------------
+# 工具11: analyze_code_quality - 代码质量分析工具
+# 功能: 分析 Python 代码的质量，包括复杂度、风格、潜在问题
+# 使用场景: Agent 需要评估代码质量或提供改进建议时
+# ----------------------------------------------------------------------------
+@tool
+def analyze_code_quality(file_path: str) -> str:
+    """
+    分析 Python 代码的质量，包括：
+    1. 代码复杂度（圈复杂度）
+    2. 代码风格检查（PEP 8）
+    3. 潜在问题和改进建议
+    4. 代码行数统计
+    
+    Args:
+        file_path: Python 文件的路径
+        
+    Returns:
+        str: 代码质量分析报告
+    """
+    print(f"正在分析代码质量: {file_path}")
+    
+    try:
+        if not os.path.exists(file_path):
+            return f"错误：文件不存在 - {file_path}"
+        
+        if not file_path.endswith('.py'):
+            return f"错误：不是 Python 文件（.py）- {file_path}"
+        
+        # 读取文件内容
+        with open(file_path, 'r', encoding='utf-8') as f:
+            code_content = f.read()
+        
+        report_lines = []
+        report_lines.append(f"📊 代码质量分析报告")
+        report_lines.append(f"📁 文件: {file_path}")
+        report_lines.append(f"⏰ 分析时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        report_lines.append("=" * 60)
+        
+        # 1. 基础统计
+        lines = code_content.split('\n')
+        total_lines = len(lines)
+        non_empty_lines = len([line for line in lines if line.strip()])
+        comment_lines = len([line for line in lines if line.strip().startswith('#')])
+        
+        report_lines.append("【1. 基础统计】")
+        report_lines.append(f"  📈 总行数: {total_lines}")
+        report_lines.append(f"  📈 非空行数: {non_empty_lines}")
+        report_lines.append(f"  📈 注释行数: {comment_lines}")
+        report_lines.append(f"  📈 注释比例: {comment_lines/max(non_empty_lines, 1)*100:.1f}%")
+        
+        # 2. 函数统计
+        import ast
+        try:
+            tree = ast.parse(code_content)
+            
+            # 统计函数和类
+            functions = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+            classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+            imports = [node for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))]
+            
+            report_lines.append("\n【2. 代码结构】")
+            report_lines.append(f"  🔧 函数数量: {len(functions)}")
+            report_lines.append(f"  🏗️  类数量: {len(classes)}")
+            report_lines.append(f"  📦 导入模块: {len(imports)}")
+            
+            # 函数复杂度分析（简单版）
+            if functions:
+                report_lines.append("\n【3. 函数分析】")
+                for func in functions[:5]:  # 只显示前5个函数
+                    func_lines = func.end_lineno - func.lineno if hasattr(func, 'end_lineno') else 0
+                    # 简单复杂度估算：嵌套层数
+                    complexity = 0
+                    for node in ast.walk(func):
+                        if isinstance(node, (ast.If, ast.While, ast.For, ast.Try, ast.With)):
+                            complexity += 1
+                    
+                    report_lines.append(f"  📝 {func.name}:")
+                    report_lines.append(f"    行数: {func_lines}, 复杂度: {complexity}")
+                    
+                    if complexity > 5:
+                        report_lines.append(f"    ⚠️  建议: 函数 {func.name} 复杂度较高，考虑拆分")
+                    elif func_lines > 50:
+                        report_lines.append(f"    ⚠️  建议: 函数 {func.name} 过长，考虑重构")
+        
+        except SyntaxError as e:
+            report_lines.append(f"\n⚠️ 语法错误: {str(e)}")
+        
+        # 3. 代码风格检查（简单版）
+        report_lines.append("\n【4. 代码风格检查】")
+        
+        # 检查行长
+        long_lines = [(i+1, line) for i, line in enumerate(lines) if len(line) > 79]
+        if long_lines:
+            report_lines.append(f"  ⚠️  发现 {len(long_lines)} 行超过79字符:")
+            for line_num, line in long_lines[:3]:  # 只显示前3个
+                report_lines.append(f"    第{line_num}行: {line[:50]}...")
+        
+        # 检查导入顺序
+        import_sections = []
+        current_section = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('import ') or stripped.startswith('from '):
+                current_section.append(line)
+            elif current_section:
+                import_sections.append(current_section)
+                current_section = []
+        
+        if len(import_sections) > 1:
+            report_lines.append(f"  ⚠️  导入语句被代码分隔，建议集中放置")
+        
+        # 4. 潜在问题检查
+        report_lines.append("\n【5. 潜在问题】")
+        
+        # 检查硬编码字符串
+        hardcoded_strings = []
+        for i, line in enumerate(lines):
+            if 'password' in line.lower() or 'secret' in line.lower() or 'key' in line.lower():
+                if '"' in line or "'" in line:
+                    hardcoded_strings.append((i+1, line.strip()[:50]))
+        
+        if hardcoded_strings:
+            report_lines.append(f"  🔒 发现可能硬编码的敏感信息:")
+            for line_num, line in hardcoded_strings[:3]:
+                report_lines.append(f"    第{line_num}行: {line}...")
+        
+        # 检查TODO/FIXME
+        todo_lines = [(i+1, line.strip()) for i, line in enumerate(lines) 
+                     if 'TODO' in line.upper() or 'FIXME' in line.upper()]
+        if todo_lines:
+            report_lines.append(f"  📋 发现 {len(todo_lines)} 个待办事项:")
+            for line_num, line in todo_lines[:3]:
+                report_lines.append(f"    第{line_num}行: {line}")
+        
+        # 5. 改进建议
+        report_lines.append("\n【6. 改进建议】")
+        
+        suggestions = []
+        if comment_lines / max(non_empty_lines, 1) < 0.1:
+            suggestions.append("增加注释，提高代码可读性")
+        
+        if len(long_lines) > 5:
+            suggestions.append("缩短过长的代码行（>79字符）")
+        
+        if len(functions) > 0 and any(len(functions) > 10 for _ in functions):
+            suggestions.append("考虑将大型函数拆分为更小的函数")
+        
+        if not suggestions:
+            suggestions.append("代码质量良好，继续保持！")
+        
+        for i, suggestion in enumerate(suggestions, 1):
+            report_lines.append(f"  {i}. {suggestion}")
+        
+        report_lines.append("\n" + "=" * 60)
+        report_lines.append("💡 提示: 使用更专业的工具（如 pylint、flake8）进行详细分析")
+        
+        return "\n".join(report_lines)
+        
+    except Exception as e:
+        return f"代码质量分析失败: {str(e)}"
+
+
 # 不需要手动注册，@tool 装饰器已经处理
 # read_py_file_tool 和 save_py_file_tool 已经在上面通过 @tool 装饰器创建
+
+
+# ============================================================================
+# 向量数据库管理（全局变量）
+# ============================================================================
+_vector_db = None
+_embeddings = None
+_db_initialized = False
+
+
+def _get_or_create_vector_db(persist_directory: str = "vector_db"):
+    """
+    获取或创建向量数据库实例（单例模式）
+    
+    Args:
+        persist_directory: 向量数据库持久化目录
+    
+    Returns:
+        Chroma: 向量数据库实例
+    """
+    global _vector_db, _embeddings, _db_initialized
+    
+    if not _db_initialized:
+        try:
+            # 设置环境变量以禁用警告
+            import os
+            os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
+            
+            # 初始化嵌入模型（使用中文模型）
+            print("正在加载嵌入模型（首次使用需要下载约400MB）...")
+            _embeddings = HuggingFaceEmbeddings(
+                model_name="shibing624/text2vec-base-chinese",
+                model_kwargs={'device': 'cpu'}  # 使用 CPU，如果有 GPU 可以改为 'cuda'
+            )
+            
+            # 创建或加载向量数据库
+            print(f"正在初始化向量数据库: {persist_directory}")
+            _vector_db = Chroma(
+                embedding_function=_embeddings,
+                persist_directory=persist_directory
+            )
+            
+            _db_initialized = True
+            print("✅ 向量数据库初始化成功")
+            
+        except Exception as e:
+            print(f"❌ 向量数据库初始化失败: {e}")
+            raise
+    
+    return _vector_db
+
+
+# ----------------------------------------------------------------------------
+# 工具13: add_documents_to_vector_db - 添加文档到向量数据库
+# 功能: 将文本内容添加到向量数据库中，支持语义搜索
+# 使用场景: 建立知识库、文档检索系统
+# ----------------------------------------------------------------------------
+@tool
+def add_documents_to_vector_db(texts: str, collection_name: str = "default", metadata: str = "") -> str:
+    """
+    将一个或多个文档添加到向量数据库中
+    
+    Args:
+        texts: 要添加的文本内容，多个文档用 '|||' 分隔
+        collection_name: 集合名称（用于分类存储不同主题的文档）
+        metadata: 元数据信息（JSON格式字符串，可选）
+    
+    Returns:
+        str: 添加成功的确认信息
+    
+    示例:
+        # 添加单个文档
+        add_documents_to_vector_db("Python是一种编程语言", "programming")
+        
+        # 添加多个文档
+        add_documents_to_vector_db(
+            "文档1内容|||文档2内容|||文档3内容",
+            "knowledge_base",
+            '{"source": "manual", "date": "2024-01-01"}'
+        )
+    """
+    print(f"正在添加文档到向量数据库 (集合: {collection_name})...")
+    
+    try:
+        # 获取或创建向量数据库
+        vector_db = _get_or_create_vector_db()
+        
+        # 分割多个文档
+        text_list = [t.strip() for t in texts.split('|||') if t.strip()]
+        
+        if not text_list:
+            return "错误：没有提供有效的文本内容"
+        
+        # 解析元数据
+        meta_dict = {}
+        if metadata:
+            try:
+                import json
+                meta_dict = json.loads(metadata)
+            except:
+                meta_dict = {"info": metadata}
+        
+        # 创建 Document 对象列表
+        documents = []
+        for i, text in enumerate(text_list):
+            doc_metadata = meta_dict.copy()
+            doc_metadata["index"] = i
+            doc_metadata["collection"] = collection_name
+            doc_metadata["timestamp"] = datetime.now().isoformat()
+            
+            documents.append(Document(
+                page_content=text,
+                metadata=doc_metadata
+            ))
+        
+        # 添加到向量数据库
+        vector_db.add_documents(documents)
+        
+        return f"✅ 成功添加 {len(documents)} 个文档到集合 '{collection_name}'\n📊 文档总数量: {vector_db._collection.count()}"
+    
+    except Exception as e:
+        import traceback
+        return f"❌ 添加文档失败: {str(e)}\n\n{traceback.format_exc()}"
+
+
+# ----------------------------------------------------------------------------
+# 工具14: search_vector_db - 向量数据库语义搜索
+# 功能: 基于语义相似度搜索相关文档
+# 使用场景: 知识检索、问答系统、文档推荐
+# ----------------------------------------------------------------------------
+@tool
+def search_vector_db(query: str, collection_name: str = "default", top_k: int = 5) -> str:
+    """
+    在向量数据库中搜索与查询最相关的文档
+    
+    Args:
+        query: 搜索查询文本
+        collection_name: 要搜索的集合名称
+        top_k: 返回最相关的 K 个结果（默认5个）
+    
+    Returns:
+        str: 搜索结果，包含文档内容和相似度分数
+    
+    示例:
+        search_vector_db("如何学习Python?", "programming", 3)
+    """
+    print(f"正在向量数据库中搜索: {query}")
+    
+    try:
+        # 获取向量数据库
+        vector_db = _get_or_create_vector_db()
+        
+        # 执行相似性搜索
+        results = vector_db.similarity_search_with_score(
+            query=query,
+            k=top_k
+        )
+        
+        if not results:
+            return f"⚠️ 在集合 '{collection_name}' 中未找到相关文档"
+        
+        # 格式化结果
+        output = [f"🔍 搜索结果 (共 {len(results)} 条):\n"]
+        output.append(f"查询: {query}\n")
+        output.append("=" * 60)
+        
+        for i, (doc, score) in enumerate(results, 1):
+            similarity = 1 - score  # 转换为相似度（0-1之间）
+            output.append(f"\n【结果 {i}】 相似度: {similarity:.4f}")
+            output.append(f"内容: {doc.page_content[:500]}")  # 限制显示长度
+            
+            if doc.metadata:
+                output.append(f"元数据: {doc.metadata}")
+            
+            output.append("-" * 60)
+        
+        return "\n".join(output)
+    
+    except Exception as e:
+        import traceback
+        return f"❌ 搜索失败: {str(e)}\n\n{traceback.format_exc()}"
+
+
+# ----------------------------------------------------------------------------
+# 工具15: clear_vector_db - 清空向量数据库
+# 功能: 删除向量数据库中的所有文档
+# 使用场景: 重置知识库、清理测试数据
+# ----------------------------------------------------------------------------
+@tool
+def clear_vector_db(collection_name: str = "default") -> str:
+    """
+    清空指定集合中的所有文档
+    
+    Args:
+        collection_name: 要清空的集合名称
+    
+    Returns:
+        str: 操作结果
+    """
+    print(f"正在清空集合: {collection_name}")
+    
+    try:
+        vector_db = _get_or_create_vector_db()
+        
+        # 获取当前文档数量
+        count_before = vector_db._collection.count()
+        
+        # 删除所有文档
+        vector_db._collection.delete(where={"collection": collection_name})
+        
+        count_after = vector_db._collection.count()
+        deleted = count_before - count_after
+        
+        return f"✅ 已清空集合 '{collection_name}'\n🗑️ 删除文档数: {deleted}\n📊 剩余文档数: {count_after}"
+    
+    except Exception as e:
+        return f"❌ 清空失败: {str(e)}"
+
+
+# ============================================================================
+# 用户偏好管理系统
+# ============================================================================
+_user_preferences_file = "user_preferences.json"
+
+def _load_user_preferences() -> dict:
+    """加载用户偏好"""
+    if os.path.exists(_user_preferences_file):
+        try:
+            with open(_user_preferences_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def _save_user_preferences(preferences: dict):
+    """保存用户偏好"""
+    try:
+        with open(_user_preferences_file, 'w', encoding='utf-8') as f:
+            json.dump(preferences, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"保存偏好失败: {e}")
+        return False
+
+
+# ----------------------------------------------------------------------------
+# 工具16: save_user_preference - 保存用户偏好
+# 功能: 记录用户的编程习惯、语言偏好、工具选择等
+# 使用场景: Agent 学习用户习惯，提供个性化服务
+# ----------------------------------------------------------------------------
+@tool
+def save_user_preference(category: str, key: str, value: str) -> str:
+    """
+    保存用户的偏好设置
+    
+    Args:
+        category: 偏好类别（如：'coding_style', 'language', 'tools_file', 'workflow'）
+        key: 偏好键名（如：'indentation', 'preferred_language', 'testing_framework'）
+        value: 偏好值（如：'4 spaces', 'Python', 'pytest'）
+    
+    Returns:
+        str: 保存成功的确认信息
+    
+    示例:
+        save_user_preference("coding_style", "indentation", "4 spaces")
+        save_user_preference("language", "response_language", "中文")
+        save_user_preference("tools_file", "testing_framework", "pytest")
+    """
+    print(f"正在保存用户偏好: {category}.{key} = {value}")
+    
+    try:
+        preferences = _load_user_preferences()
+        
+        # 确保类别存在
+        if category not in preferences:
+            preferences[category] = {}
+        
+        # 保存偏好
+        preferences[category][key] = {
+            "value": value,
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        # 保存到文件
+        if _save_user_preferences(preferences):
+            return f"✅ 已保存偏好: {category}.{key} = {value}"
+        else:
+            return "❌ 保存失败"
+    
+    except Exception as e:
+        return f"❌ 保存偏好失败: {str(e)}"
+
+
+# ----------------------------------------------------------------------------
+# 工具17: get_user_preferences - 获取用户偏好
+# 功能: 查询用户的所有或特定偏好设置
+# 使用场景: Agent 根据用户偏好调整行为
+# ----------------------------------------------------------------------------
+@tool
+def get_user_preferences(category: str = "all") -> str:
+    """
+    获取用户的偏好设置
+    
+    Args:
+        category: 偏好类别（'all' 表示所有类别，或指定具体类别）
+    
+    Returns:
+        str: 用户偏好设置的文本描述
+    
+    示例:
+        get_user_preferences("all")  # 获取所有偏好
+        get_user_preferences("coding_style")  # 获取编码风格偏好
+    """
+    print(f"正在获取用户偏好: {category}")
+    
+    try:
+        preferences = _load_user_preferences()
+        
+        if not preferences:
+            return "⚠️ 还没有保存任何用户偏好"
+        
+        output = ["📋 用户偏好设置:\n"]
+        output.append("=" * 60)
+        
+        if category == "all":
+            # 显示所有类别
+            for cat, prefs in preferences.items():
+                output.append(f"\n【{cat}】")
+                for key, pref_data in prefs.items():
+                    value = pref_data.get("value", "N/A")
+                    updated = pref_data.get("updated_at", "Unknown")
+                    output.append(f"  • {key}: {value}")
+                    output.append(f"    (更新时间: {updated})")
+        else:
+            # 显示指定类别
+            if category in preferences:
+                output.append(f"\n【{category}】")
+                for key, pref_data in preferences[category].items():
+                    value = pref_data.get("value", "N/A")
+                    updated = pref_data.get("updated_at", "Unknown")
+                    output.append(f"  • {key}: {value}")
+                    output.append(f"    (更新时间: {updated})")
+            else:
+                return f"⚠️ 类别 '{category}' 不存在"
+        
+        output.append("\n" + "=" * 60)
+        return "\n".join(output)
+    
+    except Exception as e:
+        return f"❌ 获取偏好失败: {str(e)}"
+
+
+# ----------------------------------------------------------------------------
+# 工具18: delete_user_preference - 删除用户偏好
+# 功能: 删除指定的用户偏好设置
+# 使用场景: 清理过时或不需要的偏好
+# ----------------------------------------------------------------------------
+@tool
+def delete_user_preference(category: str, key: str) -> str:
+    """
+    删除用户的偏好设置
+    
+    Args:
+        category: 偏好类别
+        key: 偏好键名
+    
+    Returns:
+        str: 操作结果
+    
+    示例:
+        delete_user_preference("coding_style", "indentation")
+    """
+    print(f"正在删除用户偏好: {category}.{key}")
+    
+    try:
+        preferences = _load_user_preferences()
+        
+        if category not in preferences or key not in preferences[category]:
+            return f"⚠️ 偏好不存在: {category}.{key}"
+        
+        # 删除偏好
+        deleted_value = preferences[category].pop(key)["value"]
+        
+        # 如果类别为空，删除整个类别
+        if not preferences[category]:
+            del preferences[category]
+        
+        # 保存
+        if _save_user_preferences(preferences):
+            return f"✅ 已删除偏好: {category}.{key} = {deleted_value}"
+        else:
+            return "❌ 删除失败"
+    
+    except Exception as e:
+        return f"❌ 删除偏好失败: {str(e)}"
 
 
 
