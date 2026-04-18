@@ -62,20 +62,35 @@ Python AI Agent 项目 - 环境配置指南
 5. LLM 接口
    - openai: OpenAI/兼容 API 客户端
 
+6. 数据处理和可视化
+   - pandas: 数据分析框架
+   - numpy: 数值计算
+   - matplotlib: 2D 绘图库
+   - seaborn: 统计可视化
+   - plotly: 交互式可视化
+   - openpyxl: Excel 文件读写
+
+7. 图像处理
+   - Pillow: 基础图像处理（必需）
+   - opencv-python: 高级计算机视觉（可选）
+
+8. 向量数据库和语义搜索
+   - chromadb: 向量数据库引擎
+   - langchain-chroma: LangChain Chroma 集成
+   - sentence-transformers: 文本嵌入模型
+   - faiss-cpu: Facebook AI 相似度搜索
+
 【可选依赖】
 
-6. 文本处理增强
+9. 文本处理增强
    - nltk: 自然语言处理（用于 unstructured）
    - beautifulsoup4: HTML 解析
    - lxml: XML/HTML 处理
 
-7. 数据处理
-   - numpy: 数值计算
-   - requests: HTTP 请求库
-
-8. 工具库
-   - pydantic: 数据验证和设置管理
-   - typing-extensions: 类型提示支持
+10. 工具库
+    - pydantic: 数据验证和设置管理
+    - typing-extensions: 类型提示支持
+    - requests: HTTP 请求库
 
 
 三、依赖分类详解
@@ -96,11 +111,25 @@ Python AI Agent 项目 - 环境配置指南
 ├── 网页搜索 (duckduckgo-search, ddgs)
 └── 百科查询 (wikipedia)
 
+【数据处理和可视化】
+├── 数据分析 (pandas, numpy)
+├── Excel 处理 (openpyxl)
+└── 可视化 (matplotlib, seaborn, plotly)
+
+【图像处理】
+├── 基础处理 (Pillow)
+└── 高级视觉 (opencv-python，可选)
+
+【向量数据库和语义搜索】
+├── 向量存储 (chromadb, langchain-chroma)
+├── 文本嵌入 (sentence-transformers)
+└── 相似度搜索 (faiss-cpu)
+
 【配置管理】
 └── 环境变量 (python-dotenv)
 
 【辅助工具】
-├── 数据验证 (pydantic)
+├── 数据验证 (pydantic, pydantic-settings)
 ├── HTTP 请求 (requests)
 └── 文本处理 (beautifulsoup4, lxml)
 
@@ -117,6 +146,9 @@ Python 版本要求: >= 3.9
 - OpenAI SDK: >= 2.30.0
 - Python-Docx: >= 1.2.0
 - Unstructured: >= 0.18.0
+- Pillow: >= 10.0.0
+- Pandas: >= 2.3.0
+- ChromaDB: >= 1.5.0
 
 
 五、常见问题
@@ -154,6 +186,17 @@ A5:
     ```bash
     pip install --upgrade -r requirements.txt
     ```
+
+Q6: Pillow 安装失败怎么办？
+A6: 尝试强制重新安装
+    ```bash
+    pip install --force-reinstall --no-cache-dir Pillow==10.4.0
+    ```
+
+Q7: OpenCV 是必需的吗？
+A7: 不是。OpenCV 是可选依赖，用于高级图像处理功能。
+    基础图像处理使用 Pillow 即可。
+    如需启用 OpenCV：pip install opencv-python
 
 
 六、开发环境建议
@@ -194,6 +237,11 @@ pip install -r requirements.txt
 ✅ 网络搜索（DuckDuckGo）
 ✅ Wikipedia 查询
 ✅ 文件保存和管理
+✅ CSV/Excel 数据分析
+✅ 数据可视化（matplotlib, seaborn, plotly）
+✅ 图像处理（Pillow + OpenCV）
+✅ 向量数据库和语义搜索
+✅ Session 会话管理
 
 
 ================================================================================
